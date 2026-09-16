@@ -1,0 +1,256 @@
+openapi: 3.1.0
+info:
+  title: Smart Parking Receipt-to-Barcode Autonomous Redemption Engine (CPMS)
+  description: High-throughput, PDPA-compliant autonomous parking redemption API powered by multimodal vision AI.
+  version: 1.0.0
+servers:
+  - url: https://parking.pancatz.com/api/v1
+    description: Production Gateway
+  - url: http://localhost:8000/api/v1
+    description: Local Development
+
+paths:
+  /system/status:
+    get:
+      summary: Check system operating status and public holiday gate
+      description: Returns whether redemption is currently active based on operating hours (12:00-15:00 UTC+8) and Singapore public holidays.
+      operationId: getSystemStatus
+      responses:
+        '200':
+          description: Operational status
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - is_operational
+                  - server_time_sgt
+                  - is_weekday
+                  - is_public_holiday
+                  - holiday_name
+                properties:
+                  is_operational:
+                    type: boolean
+                    example: true
+                  server_time_sgt:
+                    type: string
+                    format: date-time
+                    example: "2026-09-16T12:30:00+08:00"
+                  is_weekday:
+                    type: boolean
+                    example: true
+                  is_public_holiday:
+                    type: boolean
+                    example: false
+                  holiday_name:
+                    type: string
+                    nullable: true
+                    example: null
+
+  /redemptions:
+    post:
+      summary: Submit receipt and vehicle plate for autonomous redemption
+      description: Ingests an uploaded receipt image and Singapore vehicle plate number, evaluates eligibility via Multimodal Vision AI, and atomically allocates a Code 128 barcode voucher.
+      operationId: submitRedemption
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - receipt_image
+                - vehicle_plate
+              properties:
+                receipt_image:
+                  type: string
+                  format: binary
+                  description: Receipt photo (JPEG, PNG, WebP; max 10MB).
+                vehicle_plate:
+                  type: string
+                  pattern: '^[A-Z]{1,3}[0-9]{1,4}[A-Z]$'
+                  description: Singapore vehicle license plate number (e.g. SBA1234A).
+                  example: "SBA1234A"
+      responses:
+        '200':
+          description: Redemption auto-approved and voucher allocated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RedemptionSuccessResponse'
+        '202':
+          description: Routed to staff manual review queue (e.g., borderline confidence or glare flag).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ManualReviewQueuedResponse'
+        '400':
+          description: Invalid vehicle plate format or missing parameters.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Daily limit reached or receipt already redeemed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Receipt validation failed (below spend threshold, outside hours, invalid tenant).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReceiptValidationErrorResponse'
+        '503':
+          description: Voucher pool exhausted or system out of operating hours.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /redemptions/{id}/status:
+    get:
+      summary: Poll status of a queued manual review
+      operationId: getRedemptionStatus
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Current review state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewStatusResponse'
+
+components:
+  schemas:
+    RedemptionSuccessResponse:
+      type: object
+      required:
+        - status
+        - voucher_code
+        - barcode_format
+        - barcode_value
+        - issued_at
+        - expires_at
+        - merchant_name
+        - eligible_amount
+      properties:
+        status:
+          type: string
+          enum: [APPROVED]
+          example: "APPROVED"
+        voucher_code:
+          type: string
+          example: "CPMS-99201485"
+        barcode_format:
+          type: string
+          example: "CODE128"
+        barcode_value:
+          type: string
+          example: "0001051165"
+        issued_at:
+          type: string
+          format: date-time
+          example: "2026-09-16T12:45:10+08:00"
+        expires_at:
+          type: string
+          format: date-time
+          example: "2026-09-16T14:45:10+08:00"
+        merchant_name:
+          type: string
+          example: "Toast Box"
+        eligible_amount:
+          type: number
+          format: float
+          example: 34.50
+
+    ManualReviewQueuedResponse:
+      type: object
+      required:
+        - status
+        - review_id
+        - message
+        - estimated_wait_seconds
+      properties:
+        status:
+          type: string
+          enum: [PENDING_REVIEW]
+          example: "PENDING_REVIEW"
+        review_id:
+          type: string
+          format: uuid
+          example: "7e50b4d4-245f-4a0b-936a-2d4e731456a0"
+        message:
+          type: string
+          example: "Receipt photo flagged for quick staff verification. Please keep this screen open."
+        estimated_wait_seconds:
+          type: integer
+          example: 45
+
+    ReviewStatusResponse:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum: [PENDING_REVIEW, APPROVED, REJECTED]
+          example: "APPROVED"
+        voucher_details:
+          $ref: '#/components/schemas/RedemptionSuccessResponse'
+        rejection_reason:
+          type: string
+          nullable: true
+          example: null
+
+    ReceiptValidationErrorResponse:
+      type: object
+      required:
+        - error_code
+        - message
+        - details
+      properties:
+        error_code:
+          type: string
+          example: "RECEIPT_INSUFFICIENT_SPEND"
+        message:
+          type: string
+          example: "Receipt total of $24.80 is below the required minimum spend of $30.00 SGD."
+        details:
+          type: object
+          properties:
+            merchant:
+              type: string
+              example: "BreadTalk"
+            receipt_date:
+              type: string
+              example: "2026-09-16"
+            receipt_time:
+              type: string
+              example: "12:15"
+            gross_total:
+              type: number
+              example: 24.80
+            minimum_required:
+              type: number
+              example: 30.00
+
+    ErrorResponse:
+      type: object
+      required:
+        - error_code
+        - message
+      properties:
+        error_code:
+          type: string
+          example: "VEHICLE_DAILY_LIMIT_EXCEEDED"
+        message:
+          type: string
+          example: "This vehicle plate has already redeemed parking today."
