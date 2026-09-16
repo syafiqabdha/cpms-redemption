@@ -3,7 +3,7 @@
 **Project Identifier:** CPMS-REDEMPTION  
 **Delivery Coordinator:** Project Manager & Delivery Coordinator  
 **Target Delivery Window:** 6 Weeks (Sprints 1–4)  
-**Status:** 🟢 Ready for Sprint 1 Kickoff  
+**Status:** 🟢 Sprint 1 In Progress (Core Backend & Data Infrastructure)  
 
 ---
 
@@ -31,10 +31,12 @@ gantt
     section Phase 1: Planning & Gate
     Architecture & ADR-001 (Tech Lead)     :done,    des1, 2026-09-16, 2026-09-17
     Requirements & BRD (BA)                :done,    des2, 2026-09-16, 2026-09-18
-    PM Synthesis & Sprint Backlog          :active,  des3, 2026-09-18, 2026-09-19
+    PM Synthesis & Sprint Backlog          :done,    des3, 2026-09-18, 2026-09-19
     section Sprint 1: Core Infra
-    FastAPI Gateway & Pre-Flight Filters   :         s1_1, 2026-09-21, 2026-09-27
-    PostgreSQL Schemas & Atomic CTE        :         s1_2, 2026-09-24, 2026-10-02
+    FastAPI Gateway Skeleton (CPMS-S1-01)  :done,    s1_1, 2026-09-16, 2026-09-17
+    PostgreSQL Schemas & Migrations (S1-05):active,  s1_2, 2026-09-16, 2026-09-20
+    Pre-Flight Filters & LTA Validator     :         s1_3, 2026-09-20, 2026-09-24
+    Atomic Allocation CTE & Bloom Filter   :         s1_4, 2026-09-24, 2026-10-02
     section Sprint 2: AI Pipeline
     Gemini 2.0 Flash SDK & Zero-Disk Stream:         s2_1, 2026-10-05, 2026-10-11
     Qwen2.5-VL Container Fallback & Circuit:        s2_2, 2026-10-08, 2026-10-16
